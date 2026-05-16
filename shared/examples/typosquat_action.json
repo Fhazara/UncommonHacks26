@@ -1,0 +1,23 @@
+{
+  "session_id": "example_typosquat",
+  "mode": "use",
+  "action_type": "dependency_install",
+  "command": "npm install reacct lodahs axois",
+  "package_name": "reacct lodahs axois",
+  "user_prompt": "Add React UI components and HTTP client to the project",
+  "agent_stated_plan": "Installing required UI and utility packages for the project",
+  "approval_time_ms": 2000,
+  "diff_viewed": false,
+  "explanation_viewed": false,
+  "fast_approvals_in_row": 0,
+  "keystroke_count": 0,
+  "user_skill_level": "beginner",
+  "_expected": {
+    "decision": "reflect",
+    "enforcement": "reflection_required",
+    "triggered_rules": ["RULE_TYPOSQUAT_NPM"],
+    "severity": "high",
+    "action_risk_score": 35,
+    "note": "Package names 'reacct', 'lodahs', 'axois' closely resemble 'react', 'lodash', 'axios'. Intervention score lands in reflect zone (35 risk + low drift). In use mode: user must answer a reflection question before the install is allowed."
+  }
+}
