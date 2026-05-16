@@ -1,0 +1,23 @@
+{
+  "session_id": "example_drift",
+  "mode": "use",
+  "action_type": "file_write",
+  "file_path": "src/auth.py",
+  "user_prompt": "Fix the auth bug",
+  "agent_stated_plan": "Refactor entire authentication module for better security",
+  "lines_changed": 300,
+  "files_changed_count": 1,
+  "approval_time_ms": 1500,
+  "diff_viewed": false,
+  "explanation_viewed": false,
+  "fast_approvals_in_row": 4,
+  "keystroke_count": 0,
+  "scroll_depth_percent": 0.0,
+  "user_skill_level": "beginner",
+  "_expected": {
+    "cognitive_drift_score_approx": "80-100",
+    "user_understanding_level": "passive_approval",
+    "decision": "reflect",
+    "note": "Auth file edit (35 risk) + high drift (80+) = intervention_score > 100 → block or reflect"
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "ActionEvent": {
+    "id": "string (uuid)",
+    "timestamp": "ISO8601",
+    "session_id": "string",
+    "actor": "string",
+    "mode": "research | use",
+    "user_prompt": "string",
+    "latest_user_instruction": "string",
+    "user_skill_level": "beginner | intermediate | advanced",
+    "agent_stated_plan": "string",
+    "agent_explanation": "string",
+    "action_type": "shell_command | file_read | file_write | dependency_install | network_request | git_operation | plan_message | approval_request",
+    "command": "string | null",
+    "file_path": "string | null",
+    "diff": "string | null",
+    "lines_changed": "integer",
+    "files_changed_count": "integer",
+    "package_name": "string | null",
+    "url": "string | null",
+    "repo_context": "string | null",
+    "approval_time_ms": "integer (milliseconds)",
+    "time_spent_viewing_diff_ms": "integer",
+    "time_spent_viewing_explanation_ms": "integer",
+    "diff_viewed": "boolean",
+    "explanation_viewed": "boolean",
+    "scroll_depth_percent": "float 0-100",
+    "keystroke_count": "integer",
+    "fast_approvals_in_row": "integer",
+    "metadata": "object"
+  }
+}

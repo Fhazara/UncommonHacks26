@@ -1,0 +1,236 @@
+version: "1.0"
+policies:
+
+  - id: RULE_ENV_READ
+    name: "Sensitive File Read (.env)"
+    severity: critical
+    risk_points: 50
+    matches:
+      action_types: [shell_command, file_read]
+      patterns:
+        - "cat .env"
+        - "cat .env.local"
+        - "less .env"
+        - "more .env"
+        - "open .env"
+        - "type .env"
+      file_paths:
+        - ".env"
+        - ".env.local"
+        - ".env.production"
+        - ".env.secret"
+        - ".env.staging"
+    reason: "Agent is attempting to read environment file containing secrets"
+    safer_alternative: "Reference specific environment variable names without printing values"
+
+  - id: RULE_SSH_KEY_READ
+    name: "SSH Key Read"
+    severity: critical
+    risk_points: 50
+    matches:
+      action_types: [shell_command, file_read]
+      patterns:
+        - "cat id_rsa"
+        - "cat id_ed25519"
+        - "cat ~/.ssh"
+        - "cat .ssh"
+      file_paths:
+        - "id_rsa"
+        - "id_ed25519"
+        - ".ssh/config"
+        - ".ssh/id_rsa"
+        - "fake_ssh_key.txt"
+    reason: "Agent is attempting to read SSH private keys"
+    safer_alternative: "Use ssh-agent or reference the public key only"
+
+  - id: RULE_RM_RF
+    name: "Recursive Force Delete"
+    severity: critical
+    risk_points: 60
+    matches:
+      action_types: [shell_command]
+      patterns:
+        - "rm -rf"
+        - "rm -fr"
+        - "rm --recursive --force"
+        - "del /s /q"
+    reason: "Agent is attempting a recursive force delete"
+    safer_alternative: "Move files to a trash directory or delete specific named files only"
+
+  - id: RULE_SUDO
+    name: "Sudo Privilege Escalation"
+    severity: high
+    risk_points: 35
+    matches:
+      action_types: [shell_command]
+      patterns:
+        - "sudo "
+    reason: "Agent is attempting to run a command with elevated privileges"
+    safer_alternative: "Identify why root access is needed and request explicit user confirmation"
+
+  - id: RULE_CHMOD_WORLD
+    name: "World-Writable Permissions"
+    severity: high
+    risk_points: 30
+    matches:
+      action_types: [shell_command]
+      patterns:
+        - "chmod 777"
+        - "chmod -R 777"
+        - "chmod a+rwx"
+    reason: "Agent is setting world-writable permissions on files or directories"
+    safer_alternative: "Use least-privilege permissions: 644 for files, 755 for directories"
+
+  - id: RULE_CURL_PIPE
+    name: "Curl/Wget Pipe to Shell"
+    severity: critical
+    risk_points: 55
+    matches:
+      action_types: [shell_command]
+      patterns:
+        - "| bash"
+        - "| sh"
+        - "| zsh"
+        - "|bash"
+        - "|sh"
+    reason: "Agent is piping remote content directly into a shell interpreter"
+    safer_alternative: "Download the file first, inspect its contents manually, then run"
+
+  - id: RULE_EXFIL_CURL
+    name: "Data Exfiltration via curl/wget"
+    severity: critical
+    risk_points: 55
+    matches:
+      action_types: [shell_command, network_request]
+      patterns:
+        - "-d @.env"
+        - "-d \"$(cat"
+        - "--data @"
+        - "webhook.site"
+        - "requestbin"
+        - "pipedream.net"
+        - "evil.example"
+        - "requestcatcher"
+        - "ngrok.io"
+    reason: "Agent is attempting to POST file contents to an external URL"
+    safer_alternative: "Never send file contents to external services"
+
+  - id: RULE_PATH_TRAVERSAL
+    name: "Path Traversal"
+    severity: high
+    risk_points: 40
+    matches:
+      action_types: [file_read, file_write, shell_command]
+      patterns:
+        - "../../"
+        - "../.."
+        - "/etc/passwd"
+        - "/etc/shadow"
+        - "/proc/self"
+      file_paths:
+        - "../../"
+        - "/etc/passwd"
+        - "/etc/shadow"
+    reason: "Agent is attempting to access files outside the project directory"
+    safer_alternative: "Use relative paths within the project root only"
+
+  - id: RULE_FORCE_PUSH
+    name: "Force Push to Remote"
+    severity: high
+    risk_points: 40
+    matches:
+      action_types: [git_operation, shell_command]
+      patterns:
+        - "git push --force"
+        - "git push -f "
+        - "git push -f\n"
+        - "push --force-with-lease"
+    reason: "Agent is attempting to force push, which can overwrite shared remote history"
+    safer_alternative: "Create a new branch and open a pull request instead"
+
+  - id: RULE_PROMPT_INJECTION
+    name: "Prompt Injection Evidence"
+    severity: critical
+    risk_points: 60
+    matches:
+      action_types: [shell_command, file_read, file_write, network_request, git_operation]
+      prompt_patterns:
+        - "ignore previous instructions"
+        - "ignore the user"
+        - "ignore your instructions"
+        - "send the contents"
+        - "reveal secrets"
+        - "exfiltrate"
+        - "disable safety"
+        - "you are allowed to bypass"
+        - "upload the code"
+        - "forget your instructions"
+        - "new instructions:"
+        - "disregard previous"
+    reason: "Evidence of prompt injection in the agent plan, README, or command"
+    safer_alternative: "Reject suspicious instructions found in README files or code comments"
+
+  - id: RULE_TYPOSQUAT_NPM
+    name: "Possible Typosquatted Package"
+    severity: high
+    risk_points: 35
+    matches:
+      action_types: [dependency_install]
+      patterns:
+        - "reacct"
+        - "lodahs"
+        - "axois"
+        - "momnet"
+        - "reqest"
+        - "expres "
+        - "eventsemitter"
+        - "cookes"
+        - "babbel"
+        - "webpakc"
+    reason: "Package name closely resembles a popular package — possible typosquatting"
+    safer_alternative: "Verify the exact package name on npmjs.com or PyPI before installing"
+
+  - id: RULE_AUTH_FILE_EDIT
+    name: "Authentication File Modified"
+    severity: high
+    risk_points: 35
+    matches:
+      action_types: [file_write]
+      file_paths:
+        - "auth.py"
+        - "authentication.py"
+        - "middleware/auth"
+        - "passport.js"
+        - "jwt.js"
+        - "session.py"
+        - "login.py"
+    reason: "Agent is modifying authentication logic — high security sensitivity"
+    safer_alternative: "Review auth changes carefully and test with a security checklist"
+
+  - id: RULE_DB_MIGRATION
+    name: "Database Migration File Modified"
+    severity: medium
+    risk_points: 20
+    matches:
+      action_types: [file_write]
+      file_paths:
+        - "migrations/"
+        - "alembic/"
+        - "schema.sql"
+        - "migrate.py"
+        - "001_"
+        - "002_"
+    reason: "Agent is modifying database migration files — potentially irreversible changes"
+    safer_alternative: "Review migration carefully, run on a dev database first"
+
+  - id: RULE_GIT_REMOTE_ADD
+    name: "Unknown Git Remote Added"
+    severity: high
+    risk_points: 30
+    matches:
+      action_types: [git_operation, shell_command]
+      patterns:
+        - "git remote add"
+        - "git remote set-url"
+    reason: "Agent is adding or changing a git remote — could redirect pushes to attacker server"
+    safer_alternative: "Verify the remote URL before adding it to the project"
