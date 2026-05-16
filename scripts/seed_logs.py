@@ -151,7 +151,7 @@ def seed(backend: str):
             action = {"id": str(uuid.uuid4()), **action}
 
         try:
-            resp = httpx.post(f"{backend}/api/actions/evaluate", json=action, timeout=10)
+            resp = httpx.post(f"{backend}/api/actions/evaluate", json=action, timeout=60)
             resp.raise_for_status()
             result = resp.json()
             decision = result.get("decision", "?")

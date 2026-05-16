@@ -162,7 +162,7 @@ def _call_wafer(action: dict, matches: list[PolicyMatch], drift: CognitiveDriftR
 
         client = OpenAI(
             api_key=settings.wafer_api_key,
-            base_url="https://api.wafer.ai/v1",
+            base_url="https://pass.wafer.ai/v1",
         )
 
         rules_summary = "; ".join(
@@ -192,13 +192,16 @@ Return ONLY a JSON object, no markdown, no explanation outside the JSON:
 }}"""
 
         response = client.chat.completions.create(
-            model="qwen3.5-turbo",
+            model="Qwen3.5-397B-A17B",
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=500,
+            max_tokens=2000,
             temperature=0.3,
         )
 
-        text = response.choices[0].message.content.strip()
+        raw_content = response.choices[0].message.content
+        if not raw_content:
+            return None
+        text = raw_content.strip()
         text = text.replace("```json", "").replace("```", "").strip()
         data = json.loads(text)
 
