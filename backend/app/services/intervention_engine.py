@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.models import (
     PolicyMatch,
@@ -111,6 +111,6 @@ def make_decision(
         teacher_explanation=teacher,
         reflection_question=reflection_question,
         safer_alternative=safer_alternative,
-        timestamp=datetime.utcnow().isoformat(),
+        timestamp=datetime.now(timezone.utc).isoformat(),
         exports=ExportStatus(),
     )
