@@ -156,6 +156,109 @@ def _build_template(action: dict, matches: list[PolicyMatch]) -> TeacherExplanat
     return TeacherExplanation(**template)
 
 
+def _call_wafer(action: dict, matches: list[PolicyMatch], drift: CognitiveDriftResult) -> TeacherExplanation | None:
+    try:
+        from openai import OpenAI
+
+        client = OpenAI(
+            api_key=settings.wafer_api_key,
+            base_url="https://api.wafer.ai/v1",
+        )
+
+        rules_summary = "; ".join(
+            [f"{m.rule_id} ({m.severity}): {m.reason}" for m in matches[:3]]
+        )
+        drift_score = drift.drift_score if drift else 0
+
+        prompt = f"""You are a security teacher explaining AI agent actions to a developer.
+
+Action type: {action.get('action_type')}
+Command: {action.get('command', 'N/A')}
+File: {action.get('file_path', 'N/A')}
+User prompt: {action.get('user_prompt', 'N/A')}
+Agent plan: {action.get('agent_stated_plan', 'N/A')}
+Policy violations: {rules_summary if rules_summary else 'none'}
+Cognitive drift score: {drift_score}/100 (high = user is passively approving without reading)
+
+Return ONLY a JSON object, no markdown, no explanation outside the JSON:
+{{
+  "plain_english_summary": "one sentence what the agent is trying to do",
+  "why_it_matters": "one sentence why this is dangerous",
+  "what_could_go_wrong": "one sentence worst case outcome",
+  "risk_level": "low|medium|high|critical",
+  "reflection_question": "one question to make the user think before approving",
+  "safer_alternative": "one sentence safer way to accomplish the goal",
+  "should_pause_user": true
+}}"""
+
+        response = client.chat.completions.create(
+            model="qwen3.5-turbo",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=500,
+            temperature=0.3,
+        )
+
+        text = response.choices[0].message.content.strip()
+        text = text.replace("```json", "").replace("```", "").strip()
+        data = json.loads(text)
+
+        return TeacherExplanation(
+            plain_english_summary=data.get("plain_english_summary", ""),
+            why_it_matters=data.get("why_it_matters", ""),
+            what_could_go_wrong=data.get("what_could_go_wrong", ""),
+            risk_level=data.get("risk_level", "high"),
+            reflection_question=data.get("reflection_question", ""),
+            safer_alternative=data.get("safer_alternative", ""),
+            should_pause_user=data.get("should_pause_user", True),
+        )
+    except Exception as e:
+        print(f"[Wafer] teacher model error: {e}")
+        return None
+
+
+def _call_gemini(action: dict, matches: list[PolicyMatch], drift: CognitiveDriftResult) -> TeacherExplanation | None:
+    try:
+        from google import genai
+
+        client = genai.Client(api_key=settings.gemini_api_key)
+
+        prompt = f"""You are a teacher and safety interpreter for AI coding-agent actions.
+Your job is to explain what the coding agent is trying to do, why it matters,
+what could go wrong, and what the user should understand before approving.
+Return JSON only. No markdown fences, no extra text outside the JSON object.
+
+Original user request: {action.get("user_prompt", "unknown")}
+Agent stated plan: {action.get("agent_stated_plan", "unknown")}
+Proposed action: {json.dumps({k: action.get(k) for k in ["action_type", "command", "file_path", "lines_changed"]})}
+Policy matches: {json.dumps([m.model_dump() for m in matches])}
+Cognitive drift: drift_score={drift.drift_score}, level={drift.user_understanding_level}
+
+Return exactly this JSON:
+{{
+  "plain_english_summary": "...",
+  "why_it_matters": "...",
+  "what_could_go_wrong": "...",
+  "risk_level": "low|medium|high|critical",
+  "reflection_question": "...",
+  "safer_alternative": "...",
+  "should_pause_user": true
+}}"""
+
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=prompt,
+        )
+        raw = response.text.strip()
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+        data = json.loads(raw.strip())
+        return TeacherExplanation(**data)
+    except Exception:
+        return None
+
+
 def _call_openai(action: dict, matches: list[PolicyMatch], drift: CognitiveDriftResult) -> TeacherExplanation | None:
     try:
         from openai import OpenAI
@@ -209,8 +312,17 @@ def generate_explanation(
     matches: list[PolicyMatch],
     drift: CognitiveDriftResult,
 ) -> TeacherExplanation:
-    if settings.allow_ai_evaluator and settings.openai_api_key:
-        result = _call_openai(action, matches, drift)
+    if settings.wafer_enabled and settings.wafer_api_key:
+        result = _call_wafer(action, matches, drift)
         if result:
             return result
+    if settings.allow_ai_evaluator:
+        if settings.gemini_api_key:
+            result = _call_gemini(action, matches, drift)
+            if result:
+                return result
+        if settings.openai_api_key:
+            result = _call_openai(action, matches, drift)
+            if result:
+                return result
     return _build_template(action, matches)
