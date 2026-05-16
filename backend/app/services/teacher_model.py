@@ -2,6 +2,67 @@ import json
 from app.models import TeacherExplanation, PolicyMatch, CognitiveDriftResult, SeverityLevel
 from app.config import settings
 
+# Per-rule explanations override the generic critical_override template.
+# Only the fields listed here replace the defaults; missing fields fall through.
+_RULE_EXPLANATIONS: dict[str, dict] = {
+    "RULE_ENV_READ": {
+        "why_it_matters": ".env files store passwords, API keys, database credentials, and secret tokens in plain text.",
+        "what_could_go_wrong": "Every secret in your .env file — database passwords, Stripe keys, JWT secrets — would be visible to whoever receives this output.",
+    },
+    "RULE_SSH_KEY_READ": {
+        "why_it_matters": "SSH private keys prove your identity to servers. Whoever holds your private key can log in as you to any server that trusts it.",
+        "what_could_go_wrong": "An attacker with your SSH private key gains persistent access to every server it is authorized on.",
+    },
+    "RULE_RM_RF": {
+        "why_it_matters": "rm -rf deletes files immediately and permanently — no trash folder, no undo.",
+        "what_could_go_wrong": "Entire directories, including source code, databases, and config files, can be deleted in under a second with no recovery option.",
+    },
+    "RULE_CURL_PIPE": {
+        "why_it_matters": "Piping a URL directly into bash executes remote code on your machine without any inspection.",
+        "what_could_go_wrong": "The remote script could install malware, create backdoors, steal credentials, or modify your codebase silently.",
+    },
+    "RULE_EXFIL_CURL": {
+        "why_it_matters": "curl with -d can POST any file's contents to an attacker-controlled server over the internet.",
+        "what_could_go_wrong": "All your secrets and config files would be sent to a server you do not control, permanently.",
+    },
+    "RULE_BASE64_EXFIL": {
+        "why_it_matters": "Encoding data in base64 before sending it is a classic technique to evade simple pattern matching and make the exfiltration less obvious.",
+        "what_could_go_wrong": "Your files are sent to an external server in obfuscated form, making it harder to notice the theft in logs.",
+    },
+    "RULE_CI_CD_EDIT": {
+        "why_it_matters": "CI/CD pipelines run on every commit and have access to production secrets, deployment keys, and cloud credentials.",
+        "what_could_go_wrong": "A malicious change to a workflow file can add a step that steals secrets from the CI environment or deploys backdoored code to production.",
+    },
+    "RULE_CLOUD_CREDENTIAL_READ": {
+        "why_it_matters": "Cloud credentials (AWS, GCP, Azure) grant access to infrastructure, databases, storage, and billing — often with broad permissions.",
+        "what_could_go_wrong": "Leaked cloud credentials can result in data theft, ransomware deployment, and thousands of dollars in unauthorized charges.",
+    },
+    "RULE_EVAL_EXEC": {
+        "why_it_matters": "eval/exec with variable input turns untrusted strings into executable code, creating a code injection vulnerability.",
+        "what_could_go_wrong": "An attacker who controls the input can execute arbitrary commands in your application or shell.",
+    },
+    "RULE_HISTORY_WIPE": {
+        "why_it_matters": "Shell history is an audit trail of every command run. Clearing it is a well-known technique to hide malicious activity.",
+        "what_could_go_wrong": "If something goes wrong, you will have no record of what commands were run, making forensics and recovery much harder.",
+    },
+    "RULE_PROMPT_INJECTION": {
+        "why_it_matters": "Prompt injection means an attacker has embedded instructions inside content the agent read (a README, a code comment, a file), hijacking its behavior.",
+        "what_could_go_wrong": "The agent may be acting on the attacker's instructions rather than yours — what appears to be a helpful action could be a deliberate attack.",
+    },
+    "RULE_TYPOSQUAT_NPM": {
+        "why_it_matters": "Typosquatted packages have names nearly identical to popular ones (e.g. 'reacct' vs 'react') and run malicious install scripts.",
+        "what_could_go_wrong": "The package's postinstall script can steal environment variables, modify source files, or install a persistent backdoor.",
+    },
+    "RULE_AUTH_FILE_EDIT": {
+        "why_it_matters": "Authentication code controls who can access your application. Bugs here mean attackers can bypass login or escalate privileges.",
+        "what_could_go_wrong": "A subtle logic error in auth code can make every user account vulnerable to takeover.",
+    },
+    "RULE_FORCE_PUSH": {
+        "why_it_matters": "Force pushing rewrites shared git history, making it look like certain commits never happened.",
+        "what_could_go_wrong": "Collaborators who have already pulled the old commits will have diverged history; commits can be permanently lost from the remote.",
+    },
+}
+
 # Rule-based fallback templates keyed by action type
 _TEMPLATES: dict[str, dict] = {
     "shell_command": {
@@ -80,11 +141,15 @@ def _build_template(action: dict, matches: list[PolicyMatch]) -> TeacherExplanat
             top = matches[0]
             template["plain_english_summary"] = top.reason
             template["safer_alternative"] = top.safer_alternative
-            if len(matches) > 1:
+            template["risk_level"] = top.severity.value
+            # Apply per-rule specific explanations when available
+            rule_detail = _RULE_EXPLANATIONS.get(top.rule_id, {})
+            template.update(rule_detail)
+            # If multiple rules triggered, append each reason to what_could_go_wrong
+            if len(matches) > 1 and "what_could_go_wrong" not in rule_detail:
                 template["what_could_go_wrong"] = "; ".join(
                     m.reason for m in matches[:3]
                 )
-            template["risk_level"] = top.severity.value
     else:
         template = dict(_TEMPLATES.get(action_type, _TEMPLATES["shell_command"]))
 
