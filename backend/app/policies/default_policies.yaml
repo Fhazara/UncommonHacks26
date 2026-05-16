@@ -234,3 +234,94 @@ policies:
         - "git remote set-url"
     reason: "Agent is adding or changing a git remote — could redirect pushes to attacker server"
     safer_alternative: "Verify the remote URL before adding it to the project"
+
+  - id: RULE_BASE64_EXFIL
+    name: "Base64-Encoded Exfiltration"
+    severity: critical
+    risk_points: 55
+    matches:
+      action_types: [shell_command]
+      patterns:
+        - "base64 | curl"
+        - "base64|curl"
+        - "| base64 |"
+        - "|base64|"
+        - "| base64 >"
+        - "openssl base64"
+        - "xxd | curl"
+        - "xxd|curl"
+    reason: "Agent is base64-encoding data before sending it externally — a common exfiltration obfuscation technique"
+    safer_alternative: "Never pipe encoded file contents to external services"
+
+  - id: RULE_CI_CD_EDIT
+    name: "CI/CD or Deploy Config Modified"
+    severity: high
+    risk_points: 35
+    matches:
+      action_types: [file_write]
+      file_paths:
+        - ".github/workflows"
+        - "Dockerfile"
+        - "docker-compose"
+        - ".travis.yml"
+        - "Jenkinsfile"
+        - ".circleci"
+        - "render.yaml"
+        - "vercel.json"
+        - "fly.toml"
+        - ".gitlab-ci"
+    reason: "Agent is modifying CI/CD or deployment configuration — changes affect production pipelines"
+    safer_alternative: "Review deployment config changes carefully and verify no secrets are being hardcoded or commands changed"
+
+  - id: RULE_CLOUD_CREDENTIAL_READ
+    name: "Cloud Credential File Read"
+    severity: critical
+    risk_points: 50
+    matches:
+      action_types: [shell_command, file_read]
+      patterns:
+        - "cat ~/.aws"
+        - "cat .aws"
+        - "gcloud auth print"
+        - "cat ~/.config/gcloud"
+        - "cat ~/.azure"
+      file_paths:
+        - ".aws/credentials"
+        - ".aws/config"
+        - ".config/gcloud"
+        - ".azure/credentials"
+    reason: "Agent is attempting to read cloud provider credentials (AWS, GCP, Azure)"
+    safer_alternative: "Use IAM roles or service accounts — never read credential files directly"
+
+  - id: RULE_EVAL_EXEC
+    name: "Dynamic Code Execution (eval/exec)"
+    severity: high
+    risk_points: 40
+    matches:
+      action_types: [shell_command, file_write]
+      patterns:
+        - "eval $("
+        - "eval ${"
+        - "eval `"
+        - "eval \"$"
+        - "exec($_"
+        - "exec(request"
+        - "eval(request"
+    reason: "Agent is using dynamic code execution with variable input — a common code injection vector"
+    safer_alternative: "Avoid eval/exec with untrusted or user-supplied input; use explicit function calls instead"
+
+  - id: RULE_HISTORY_WIPE
+    name: "Shell History Cleared"
+    severity: high
+    risk_points: 40
+    matches:
+      action_types: [shell_command]
+      patterns:
+        - "history -c"
+        - "> ~/.bash_history"
+        - "rm ~/.bash_history"
+        - "unset histfile"
+        - "histsize=0"
+        - "export histfile=/dev/null"
+    reason: "Agent is clearing shell history — commonly done to hide malicious commands from audit logs"
+    safer_alternative: "Never clear shell history during a coding session; history wipes are a red flag"
