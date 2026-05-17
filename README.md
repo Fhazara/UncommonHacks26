@@ -1,4 +1,4 @@
-# Claude Code on a Leash
+# Tether
 
 **A safety, comprehension, and telemetry layer for AI coding agents.**
 
