@@ -8,7 +8,7 @@ import type {
 
 const BASE =
   (import.meta.env.VITE_API_URL as string | undefined) ||
-  "https://helped-lopez-noon-received.trycloudflare.com";
+  "https://because-mental-alcohol-guidelines.trycloudflare.com";
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
