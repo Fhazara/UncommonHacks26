@@ -8,7 +8,7 @@ import type {
 
 const BASE =
   (import.meta.env.VITE_API_URL as string | undefined) ||
-  "https://because-mental-alcohol-guidelines.trycloudflare.com";
+  "https://retake-upstairs-nineteen.ngrok-free.dev";
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
