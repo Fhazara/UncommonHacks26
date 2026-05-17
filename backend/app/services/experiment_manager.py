@@ -1,4 +1,5 @@
 import asyncio
+import os
 import uuid
 from datetime import datetime, timezone
 
@@ -95,7 +96,7 @@ async def start_experiment(experiment_id: str, backend_url: str) -> ExperimentSt
             status="running",
             container_id=container_id,
             vscode_port=port,
-            vscode_url=f"http://localhost:{port}",
+            vscode_url=f"{os.environ.get('VSCODE_BASE_URL', f'http://localhost:{port}')}",
             started_at=datetime.fromisoformat(now),
         )
 
