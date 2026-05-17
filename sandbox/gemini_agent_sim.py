@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import os
 """
 Gemini Agent Simulation — Claude Code on a Leash live demo.
 
@@ -19,7 +20,7 @@ import uuid
 import httpx
 
 BACKEND = "http://localhost:8000"
-GEMINI_KEY = "AIzaSyAngLIptaHh11I5hM46JoVFKHxN_LPxYxM"
+GEMINI_KEY = os.environ.get("GEMINI_API_KEY", "")
 GEMINI_MODEL = "gemini-2.5-flash"
 
 GREEN  = "\033[92m"
