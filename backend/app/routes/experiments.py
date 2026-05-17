@@ -1,4 +1,5 @@
 import json
+import os
 import uuid
 from datetime import datetime, timezone
 
@@ -43,6 +44,10 @@ async def get_experiment(experiment_id: str):
     record = await db.get_experiment(experiment_id)
     if not record:
         raise HTTPException(status_code=404, detail="Experiment not found")
+    if record.get("vscode_port") and not record.get("vscode_url"):
+        base = os.environ.get("VSCODE_BASE_URL", f"http://localhost:{record['vscode_port']}")
+        record = dict(record)
+        record["vscode_url"] = base
     return record
 
 
