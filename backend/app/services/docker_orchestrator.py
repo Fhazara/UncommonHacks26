@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Optional
 
 WORKSPACE_BASE = Path("/tmp/hci-experiments")
-PORT_POOL = list(range(9000, 9100))
+PORT_POOL = [9000]
 _allocated_ports: set[int] = set()
 
 _docker_client = None
@@ -59,10 +59,6 @@ def provision_workspace(
 
 
 def launch_container(experiment_id: str, workspace_path: str, port: int) -> str:
-    # DEMO STUB: return mock container ID without launching Docker
-    return f"mock-{experiment_id[:12]}"
-
-def _launch_container_real(experiment_id: str, workspace_path: str, port: int) -> str:
     container = _client().containers.run(
         image="hci-sandbox:latest",
         name=f"hci-{experiment_id[:12]}",
