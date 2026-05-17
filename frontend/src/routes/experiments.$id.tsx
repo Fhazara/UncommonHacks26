@@ -116,9 +116,9 @@ function ExperimentDashboard() {
         </div>
 
         <div className="flex gap-2">
-          {exp.status === "running" && exp.vscode_port && (
+          {exp.status === "running" && exp.vscode_url && (
             <a
-              href={`http://localhost:${exp.vscode_port}`}
+              href={exp.vscode_url}
               target="_blank"
               rel="noreferrer"
               className="rounded bg-blue-700 px-3 py-1 text-sm text-white hover:bg-blue-600"
