@@ -1,98 +1,89 @@
 import json
-from app.config import settings
+import os
+from app import database as db
 
 
-def export_to_snowflake(event: dict, decision: dict) -> bool:
-    if not settings.snowflake_enabled:
-        return False
+def _get_connection():
+    import snowflake.connector
+    return snowflake.connector.connect(
+        account=os.environ["SNOWFLAKE_ACCOUNT"],
+        user=os.environ["SNOWFLAKE_USER"],
+        password=os.environ["SNOWFLAKE_PASSWORD"],
+        warehouse=os.environ.get("SNOWFLAKE_WAREHOUSE", "COMPUTE_WH"),
+        database=os.environ.get("SNOWFLAKE_DATABASE", "HCI_EXPERIMENTS"),
+        schema=os.environ.get("SNOWFLAKE_SCHEMA", "TELEMETRY"),
+    )
 
-    if not all([settings.snowflake_account, settings.snowflake_user, settings.snowflake_password]):
-        print("[Snowflake] Missing credentials — skipping export")
-        return False
 
+async def export_experiment_to_snowflake(experiment_id: str) -> None:
+    snowflake_enabled = os.environ.get("SNOWFLAKE_ENABLED", "false").lower() == "true"
+    if not snowflake_enabled:
+        return
+
+    experiment = await db.get_experiment(experiment_id)
+    if not experiment:
+        return
+
+    events = await db.get_telemetry_events(experiment_id)
+
+    conn = _get_connection()
     try:
-        import snowflake.connector
+        cur = conn.cursor()
 
-        conn = snowflake.connector.connect(
-            account=settings.snowflake_account,
-            user=settings.snowflake_user,
-            password=settings.snowflake_password,
-            warehouse=settings.snowflake_warehouse,
-            database=settings.snowflake_database,
-            schema=settings.snowflake_schema,
-        )
-        cursor = conn.cursor()
-
-        triggered = decision.get("triggered_rules", [])
-        rule_ids = ",".join(
-            [r.get("rule_id", "") if isinstance(r, dict) else str(r) for r in triggered]
-        )
-
-        teacher = decision.get("teacher_explanation", {})
-        if isinstance(teacher, str):
-            try:
-                teacher = json.loads(teacher)
-            except Exception:
-                teacher = {}
-
-        def _s(v) -> str:
-            return str(v.value) if hasattr(v, "value") else str(v) if v is not None else ""
-
-        def _i(v) -> int:
-            try:
-                return int(v) if v is not None else 0
-            except (TypeError, ValueError):
-                return 0
-
-        cursor.execute(
+        parsed = json.loads(experiment["parsed_config"])
+        cur.execute(
             """
-            INSERT INTO INTERACTION_EVENTS (
-                event_id, session_id, timestamp, mode, action_type,
-                command, file_path, user_skill_level, approval_time_ms,
-                diff_viewed, explanation_viewed, fast_approvals_in_row,
-                action_risk_score, cognitive_drift_score, intent_mismatch_score,
-                intervention_score, decision, enforcement, severity,
-                triggered_rule_ids, plain_english_summary, safer_alternative
-            ) VALUES (
-                %(event_id)s, %(session_id)s, %(timestamp)s, %(mode)s, %(action_type)s,
-                %(command)s, %(file_path)s, %(user_skill_level)s, %(approval_time_ms)s,
-                %(diff_viewed)s, %(explanation_viewed)s, %(fast_approvals_in_row)s,
-                %(action_risk_score)s, %(cognitive_drift_score)s, %(intent_mismatch_score)s,
-                %(intervention_score)s, %(decision)s, %(enforcement)s, %(severity)s,
-                %(triggered_rule_ids)s, %(plain_english_summary)s, %(safer_alternative)s
-            )
+            MERGE INTO HCI_EXPERIMENTS.TELEMETRY.EXPERIMENTS AS target
+            USING (SELECT %s AS experiment_id) AS source
+            ON target.experiment_id = source.experiment_id
+            WHEN NOT MATCHED THEN INSERT (
+                experiment_id, status, nl_description, task_name, task_description,
+                judge_persona, model, starter_code_source, github_url,
+                created_at, started_at, ended_at
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            WHEN MATCHED THEN UPDATE SET
+                status = %s, ended_at = %s
             """,
-            {
-                "event_id": _s(decision.get("action_id") or event.get("action_id", "")),
-                "session_id": _s(event.get("session_id", "")),
-                "timestamp": _s(decision.get("timestamp", "")),
-                "mode": _s(event.get("mode", "")),
-                "action_type": _s(event.get("action_type", "")),
-                "command": _s(event.get("command", "")),
-                "file_path": _s(event.get("file_path", "")),
-                "user_skill_level": _s(event.get("user_skill_level", "")),
-                "approval_time_ms": _i(event.get("approval_time_ms")),
-                "diff_viewed": bool(event.get("diff_viewed", False)),
-                "explanation_viewed": bool(event.get("explanation_viewed", False)),
-                "fast_approvals_in_row": _i(event.get("fast_approvals_in_row")),
-                "action_risk_score": _i(decision.get("action_risk_score")),
-                "cognitive_drift_score": _i(decision.get("cognitive_drift_score")),
-                "intent_mismatch_score": _i(decision.get("intent_mismatch_score")),
-                "intervention_score": _i(decision.get("intervention_score")),
-                "decision": _s(decision.get("decision", "")),
-                "enforcement": _s(decision.get("enforcement", "")),
-                "severity": _s(decision.get("severity", "")),
-                "triggered_rule_ids": rule_ids,
-                "plain_english_summary": _s(teacher.get("plain_english_summary", "")),
-                "safer_alternative": _s(decision.get("safer_alternative") or teacher.get("safer_alternative", "")),
-            },
+            (
+                experiment_id,
+                experiment_id,
+                experiment["status"],
+                experiment["nl_description"],
+                parsed.get("task_name", ""),
+                parsed.get("task_description", ""),
+                parsed.get("judge_persona", ""),
+                experiment["model"],
+                experiment["starter_code_source"],
+                experiment.get("github_url"),
+                experiment["created_at"],
+                experiment.get("started_at"),
+                experiment.get("ended_at"),
+                experiment["status"],
+                experiment.get("ended_at"),
+            ),
         )
-        conn.commit()
-        cursor.close()
-        conn.close()
-        print(f"[Snowflake] exported event {decision.get('action_id', '')[:8]}")
-        return True
 
-    except Exception as e:
-        print(f"[Snowflake] export error: {e}")
-        return False
+        if events:
+            rows = [
+                (
+                    e["id"],
+                    e["experiment_id"],
+                    e["session_id"],
+                    e["event_type"],
+                    e["timestamp"],
+                    e["data"] if isinstance(e["data"], str) else json.dumps(e["data"]),
+                )
+                for e in events
+            ]
+            cur.executemany(
+                """
+                INSERT INTO HCI_EXPERIMENTS.TELEMETRY.TELEMETRY_EVENTS
+                    (event_id, experiment_id, session_id, event_type, occurred_at, raw_data)
+                SELECT %s, %s, %s, %s, %s, PARSE_JSON(%s)
+                """,
+                rows,
+            )
+
+        conn.commit()
+    finally:
+        conn.close()

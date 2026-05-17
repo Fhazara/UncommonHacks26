@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -m pip install *)",
+      "Bash(python3 -m pytest *)",
+      "Bash(python3 -m uvicorn *)",
+      "Bash(python3 -m pip install -r *)"
+    ]
+  }
+}

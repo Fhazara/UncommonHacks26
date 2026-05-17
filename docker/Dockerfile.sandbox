@@ -1,0 +1,26 @@
+FROM gitpod/openvscode-server:latest
+
+USER root
+
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs git curl \
+    && npm install -g @anthropic-ai/claude-code \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY judge-extension/judge-agent.vsix /tmp/judge-agent.vsix
+RUN /home/.openvscode-server/bin/openvscode-server --install-extension /tmp/judge-agent.vsix \
+    && rm /tmp/judge-agent.vsix
+
+RUN mkdir -p /config/workspace && chown -R openvscode-server:openvscode-server /config/workspace
+
+USER openvscode-server
+
+WORKDIR /config/workspace
+
+EXPOSE 8080
+
+CMD ["/home/.openvscode-server/bin/openvscode-server", \
+     "--host", "0.0.0.0", \
+     "--port", "8080", \
+     "--without-connection-token", \
+     "--default-folder", "/config/workspace"]

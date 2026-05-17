@@ -1,16 +1,20 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app import database
 from app.config import settings
-from app.database import init_db
-from app.routes import actions, policies, sandbox, reports, reflection, telemetry
-from app.routes.simulation import router as simulation_router
+from app.routes import experiments, starter_code
 
-app = FastAPI(
-    title="Claude Code on a Leash",
-    description="AI agent safety, comprehension, and telemetry firewall",
-    version="1.0.0",
-)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await database.init_db()
+    yield
+
+
+app = FastAPI(title="HCI Experiment Platform", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -20,27 +24,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(actions.router, prefix="/api/actions", tags=["actions"])
-app.include_router(policies.router, prefix="/api/policies", tags=["policies"])
-app.include_router(sandbox.router, prefix="/api/sandbox", tags=["sandbox"])
-app.include_router(reports.router, prefix="/api/report", tags=["reports"])
-app.include_router(reflection.router, prefix="/api/reflection", tags=["reflection"])
-app.include_router(telemetry.router, prefix="/api/telemetry", tags=["telemetry"])
-app.include_router(simulation_router, tags=["simulation"])
+app.include_router(experiments.router)
+app.include_router(starter_code.router)
 
 
-@app.on_event("startup")
-async def startup():
-    await init_db()
-
-
-@app.get("/api/health")
-def health():
-    return {
-        "status": "ok",
-        "mode": settings.firewall_mode,
-        "ai_evaluator": settings.allow_ai_evaluator,
-        "snowflake": settings.snowflake_enabled,
-        "wafer": settings.wafer_enabled,
-        "version": "1.0.0",
-    }
+@app.get("/health")
+async def health():
+    return {"status": "ok", "service": "hci-experiment-platform"}

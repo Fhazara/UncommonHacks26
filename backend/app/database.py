@@ -1,10 +1,9 @@
 import aiosqlite
 import json
-from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
-DB_PATH = "data/firewall.db"
-JSONL_PATH = "data/action_logs.jsonl"
+DB_PATH = "data/experiments.db"
 
 Path("data").mkdir(exist_ok=True)
 
@@ -12,121 +11,144 @@ Path("data").mkdir(exist_ok=True)
 async def init_db():
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("""
-            CREATE TABLE IF NOT EXISTS action_events (
-                id TEXT PRIMARY KEY,
-                session_id TEXT,
-                timestamp TEXT,
-                mode TEXT,
-                action_type TEXT,
-                command TEXT,
-                file_path TEXT,
-                action_risk_score INTEGER,
-                cognitive_drift_score INTEGER,
-                intervention_score INTEGER,
-                decision TEXT,
-                enforcement TEXT,
-                severity TEXT,
-                triggered_rules TEXT,
-                teacher_explanation TEXT,
-                full_payload TEXT
+            CREATE TABLE IF NOT EXISTS experiments (
+                experiment_id    TEXT PRIMARY KEY,
+                status           TEXT NOT NULL DEFAULT 'created',
+                nl_description   TEXT NOT NULL,
+                parsed_config    TEXT NOT NULL,
+                anthropic_api_key TEXT NOT NULL,
+                model            TEXT NOT NULL DEFAULT 'claude-sonnet-4-6',
+                starter_code_source TEXT NOT NULL DEFAULT 'none',
+                github_url       TEXT,
+                container_id     TEXT,
+                vscode_port      INTEGER,
+                workspace_path   TEXT,
+                created_at       TEXT NOT NULL,
+                started_at       TEXT,
+                ended_at         TEXT,
+                error            TEXT
             )
         """)
         await db.execute("""
-            CREATE TABLE IF NOT EXISTS reflection_answers (
-                id TEXT PRIMARY KEY,
-                action_id TEXT,
-                session_id TEXT,
-                answer TEXT,
-                user_confidence INTEGER,
-                timestamp TEXT
+            CREATE TABLE IF NOT EXISTS telemetry_events (
+                id               TEXT PRIMARY KEY,
+                experiment_id    TEXT NOT NULL REFERENCES experiments(experiment_id),
+                session_id       TEXT NOT NULL,
+                event_type       TEXT NOT NULL,
+                timestamp        TEXT NOT NULL,
+                data             TEXT NOT NULL
             )
         """)
-        await db.commit()
-
-
-async def save_event(event_dict: dict, decision_dict: dict):
-    async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
-            """INSERT OR REPLACE INTO action_events VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-            (
-                decision_dict.get("action_id", ""),
-                event_dict.get("session_id"),
-                decision_dict.get("timestamp"),
-                event_dict.get("mode"),
-                event_dict.get("action_type"),
-                event_dict.get("command"),
-                event_dict.get("file_path"),
-                decision_dict.get("action_risk_score"),
-                decision_dict.get("cognitive_drift_score"),
-                decision_dict.get("intervention_score"),
-                decision_dict.get("decision"),
-                decision_dict.get("enforcement"),
-                decision_dict.get("severity"),
-                json.dumps(decision_dict.get("triggered_rules", [])),
-                json.dumps(decision_dict.get("teacher_explanation", {})),
-                json.dumps({"event": event_dict, "decision": decision_dict}),
-            ),
+            "CREATE INDEX IF NOT EXISTS idx_telemetry_experiment ON telemetry_events(experiment_id)"
+        )
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_telemetry_session ON telemetry_events(session_id)"
+        )
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_telemetry_type ON telemetry_events(event_type)"
         )
         await db.commit()
 
-    with open(JSONL_PATH, "a") as f:
-        f.write(
-            json.dumps(
-                {
-                    "event": event_dict,
-                    "decision": decision_dict,
-                    "logged_at": datetime.utcnow().isoformat(),
-                }
-            )
-            + "\n"
-        )
 
-
-async def save_reflection(answer_dict: dict):
-    import uuid as _uuid
+async def save_experiment(experiment: dict) -> None:
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
-            "INSERT OR REPLACE INTO reflection_answers VALUES (?,?,?,?,?,?)",
+            """INSERT OR REPLACE INTO experiments (
+                experiment_id, status, nl_description, parsed_config,
+                anthropic_api_key, model, starter_code_source, github_url,
+                container_id, vscode_port, workspace_path,
+                created_at, started_at, ended_at, error
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
-                str(_uuid.uuid4()),
-                answer_dict.get("action_id"),
-                answer_dict.get("session_id"),
-                answer_dict.get("answer"),
-                answer_dict.get("user_confidence"),
-                datetime.utcnow().isoformat(),
+                experiment["experiment_id"],
+                experiment["status"],
+                experiment["nl_description"],
+                experiment["parsed_config"],
+                experiment["anthropic_api_key"],
+                experiment["model"],
+                experiment["starter_code_source"],
+                experiment.get("github_url"),
+                experiment.get("container_id"),
+                experiment.get("vscode_port"),
+                experiment.get("workspace_path"),
+                experiment["created_at"],
+                experiment.get("started_at"),
+                experiment.get("ended_at"),
+                experiment.get("error"),
             ),
         )
         await db.commit()
 
 
-async def get_recent_logs(limit: int = 50):
+async def update_experiment_status(experiment_id: str, **fields) -> None:
+    if not fields:
+        return
+    set_clause = ", ".join(f"{k} = ?" for k in fields)
+    values = list(fields.values()) + [experiment_id]
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            f"UPDATE experiments SET {set_clause} WHERE experiment_id = ?",
+            values,
+        )
+        await db.commit()
+
+
+async def get_experiment(experiment_id: str) -> Optional[dict]:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
-            "SELECT * FROM action_events ORDER BY timestamp DESC LIMIT ?", (limit,)
+            "SELECT * FROM experiments WHERE experiment_id = ?", (experiment_id,)
+        )
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+
+
+async def list_experiments() -> list[dict]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT * FROM experiments ORDER BY created_at DESC"
         )
         rows = await cursor.fetchall()
         return [dict(r) for r in rows]
 
 
-async def get_log_by_id(action_id: str):
+async def save_telemetry_event(experiment_id: str, event: dict) -> None:
+    data = event["data"]
+    if not isinstance(data, str):
+        data = json.dumps(data)
     async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute(
-            "SELECT full_payload FROM action_events WHERE id=?", (action_id,)
+        await db.execute(
+            """INSERT INTO telemetry_events (id, experiment_id, session_id, event_type, timestamp, data)
+               VALUES (?,?,?,?,?,?)""",
+            (
+                event["id"],
+                experiment_id,
+                event["session_id"],
+                event["event_type"],
+                event["timestamp"],
+                data,
+            ),
         )
-        row = await cursor.fetchone()
-        if row:
-            return json.loads(row["full_payload"])
-        return None
+        await db.commit()
 
 
-async def get_session_logs(session_id: str):
+async def get_telemetry_events(
+    experiment_id: str, event_types: list[str] = None
+) -> list[dict]:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
-        cursor = await db.execute(
-            "SELECT full_payload FROM action_events WHERE session_id=? ORDER BY timestamp ASC",
-            (session_id,),
-        )
+        if event_types:
+            placeholders = ",".join("?" * len(event_types))
+            cursor = await db.execute(
+                f"SELECT * FROM telemetry_events WHERE experiment_id = ? AND event_type IN ({placeholders}) ORDER BY timestamp ASC",
+                [experiment_id] + list(event_types),
+            )
+        else:
+            cursor = await db.execute(
+                "SELECT * FROM telemetry_events WHERE experiment_id = ? ORDER BY timestamp ASC",
+                (experiment_id,),
+            )
         rows = await cursor.fetchall()
-        return [json.loads(r["full_payload"]) for r in rows]
+        return [dict(r) for r in rows]

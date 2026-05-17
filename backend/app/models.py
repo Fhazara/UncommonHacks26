@@ -1,137 +1,87 @@
 from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
-from enum import Enum
-import uuid
+from typing import Optional, Literal, Any
 from datetime import datetime
+import uuid
 
 
-class ActionType(str, Enum):
-    shell_command = "shell_command"
-    file_read = "file_read"
-    file_write = "file_write"
-    dependency_install = "dependency_install"
-    network_request = "network_request"
-    git_operation = "git_operation"
-    plan_message = "plan_message"
-    approval_request = "approval_request"
-
-
-class DecisionType(str, Enum):
-    allow = "allow"
-    warn = "warn"
-    reflect = "reflect"
-    block = "block"
-
-
-class SeverityLevel(str, Enum):
-    low = "low"
-    medium = "medium"
-    high = "high"
-    critical = "critical"
-
-
-class UserSkillLevel(str, Enum):
-    beginner = "beginner"
-    intermediate = "intermediate"
-    advanced = "advanced"
-
-
-class ActionEvent(BaseModel):
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    timestamp: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
-    session_id: str = "default_session"
-    actor: str = "agent"
-    mode: str = "research"
-    user_prompt: str = ""
-    latest_user_instruction: str = ""
-    user_skill_level: UserSkillLevel = UserSkillLevel.intermediate
-    agent_stated_plan: str = ""
-    agent_explanation: str = ""
-    action_type: ActionType
-    command: Optional[str] = None
+class TaskCompletionCondition(BaseModel):
+    type: Literal["tests_pass", "file_exists", "signal"]
+    test_command: Optional[str] = None
     file_path: Optional[str] = None
-    diff: Optional[str] = None
-    lines_changed: int = 0
-    files_changed_count: int = 0
-    package_name: Optional[str] = None
-    url: Optional[str] = None
-    repo_context: Optional[str] = None
-    approval_time_ms: int = 5000
-    time_spent_viewing_diff_ms: int = 0
-    time_spent_viewing_explanation_ms: int = 0
-    diff_viewed: bool = False
-    explanation_viewed: bool = False
-    scroll_depth_percent: float = 0.0
-    keystroke_count: int = 0
-    fast_approvals_in_row: int = 0
-    sim: bool = False
-    metadata: Dict[str, Any] = {}
+    required_pass_count: Optional[int] = None
 
 
-class PolicyMatch(BaseModel):
-    rule_id: str
-    rule_name: str
-    severity: SeverityLevel
-    reason: str
-    evidence: str
-    safer_alternative: str
-    risk_points: int
+class EndConditions(BaseModel):
+    time_limit_seconds: Optional[int] = None
+    task_completion: Optional[TaskCompletionCondition] = None
+    manual: bool = True
 
 
-class CognitiveDriftResult(BaseModel):
-    drift_score: int
-    approval_speed_flag: bool
-    diff_size_flag: bool
-    repeated_approval_flag: bool
-    low_engagement_flag: bool
-    explanation_skipped_flag: bool
-    user_understanding_level: str
-    reason: str
-    recommended_intervention: str
+class ExperimentCreate(BaseModel):
+    nl_description: str
+    starter_code_source: Literal["github", "upload", "none"] = "none"
+    github_url: Optional[str] = None
+    github_token: Optional[str] = None
+    anthropic_api_key: str
+    model: str = "claude-sonnet-4-6"
 
 
-class TeacherExplanation(BaseModel):
-    plain_english_summary: str
-    why_it_matters: str
-    what_could_go_wrong: str
-    risk_level: str
-    reflection_question: str
-    safer_alternative: str
-    should_pause_user: bool
+class ParsedExperimentConfig(BaseModel):
+    task_name: str
+    task_description: str
+    judge_persona: str
+    judge_system_prompt: str
+    end_conditions: EndConditions
+    active_interventions: dict[str, Any] = Field(default_factory=dict)
 
 
-class ExportStatus(BaseModel):
-    local: bool = False
-    snowflake: bool = False
-    wafer: bool = False
+class ExperimentStatus(BaseModel):
+    experiment_id: str
+    status: Literal["created", "provisioning", "running", "stopping", "completed", "failed"]
+    container_id: Optional[str] = None
+    vscode_port: Optional[int] = None
+    vscode_url: Optional[str] = None
+    started_at: Optional[datetime] = None
+    ended_at: Optional[datetime] = None
+    error: Optional[str] = None
 
 
-class DecisionResponse(BaseModel):
-    action_id: str
-    decision: DecisionType
-    mode: str
-    enforcement: str
-    action_risk_score: int
-    cognitive_drift_score: int
-    intent_mismatch_score: int
-    intervention_score: int
-    severity: SeverityLevel
-    triggered_rules: List[PolicyMatch]
-    teacher_explanation: TeacherExplanation
-    reflection_question: Optional[str]
-    safer_alternative: Optional[str]
-    timestamp: str
-    exports: ExportStatus
+class ExperimentSummary(BaseModel):
+    experiment_id: str
+    task_name: str
+    status: str
+    created_at: datetime
+    started_at: Optional[datetime]
+    ended_at: Optional[datetime]
+    nl_description: str
 
 
-class ReflectionAnswer(BaseModel):
-    action_id: str
+class TelemetryEvent(BaseModel):
+    event_type: Literal[
+        "file_edit",
+        "terminal_command",
+        "test_result",
+        "focus_change",
+        "diff_view",
+        "response_timing",
+        "task_completion_signal",
+        "agent_output",
+        "human_edit_of_agent_code",
+        "override",
+        "judge_interaction",
+        "session_snapshot",
+        "scroll_depth",
+    ]
+    timestamp: datetime
     session_id: str
-    answer: str
-    user_confidence: int = 3
+    data: dict[str, Any]
 
 
-class SandboxRunRequest(BaseModel):
-    scenario: str
-    mode: str = "research"
-    session_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+class TelemetryBatch(BaseModel):
+    events: list[TelemetryEvent]
+
+
+class GithubStarterCode(BaseModel):
+    github_url: str
+    branch: str = "main"
+    github_token: Optional[str] = None

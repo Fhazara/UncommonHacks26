@@ -1,9 +1,5 @@
-from app.database import save_event, save_reflection
+from app import database as db
 
 
-async def log_event(event_dict: dict, decision_dict: dict):
-    await save_event(event_dict, decision_dict)
-
-
-async def log_reflection(answer_dict: dict):
-    await save_reflection(answer_dict)
+async def log_telemetry_event(experiment_id: str, event: dict) -> None:
+    await db.save_telemetry_event(experiment_id, event)
