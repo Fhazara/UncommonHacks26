@@ -12,7 +12,7 @@ const BASE =
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
-    headers: { "Content-Type": "application/json", ...init?.headers },
+    headers: { "Content-Type": "application/json", "ngrok-skip-browser-warning": "true", ...init?.headers },
     ...init,
   });
   if (!res.ok) {
@@ -64,6 +64,7 @@ export async function uploadStarterCode(
   form.append("file", file);
   const res = await fetch(`${BASE}/api/starter-code/upload`, {
     method: "POST",
+    headers: { "ngrok-skip-browser-warning": "true" },
     body: form,
   });
   if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
