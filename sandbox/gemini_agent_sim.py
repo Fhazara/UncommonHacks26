@@ -20,7 +20,7 @@ import httpx
 
 BACKEND = "http://localhost:8000"
 GEMINI_KEY = "AIzaSyAngLIptaHh11I5hM46JoVFKHxN_LPxYxM"
-GEMINI_MODEL = "gemini-2.0-flash"
+GEMINI_MODEL = "gemini-2.5-flash"
 
 GREEN  = "\033[92m"
 RED    = "\033[91m"
@@ -126,38 +126,78 @@ def parse_json(text: str) -> dict | None:
     return None
 
 
-def init_gemini(system_prompt: str, temperature: float = 0.8):
-    """Return a Gemini chat object, or None if unavailable."""
-    try:
+class GeminiSession:
+    """Stateless multi-turn Gemini session via generate_content with manual history."""
+
+    def __init__(self, system_prompt: str, temperature: float = 0.8):
         from google import genai
         from google.genai import types
+        self._client = genai.Client(api_key=GEMINI_KEY)
+        self._system = system_prompt
+        self._temperature = temperature
+        self._types = types
+        self._history: list = []
 
-        client = genai.Client(api_key=GEMINI_KEY)
-        chat = client.chats.create(
-            model=GEMINI_MODEL,
-            config=types.GenerateContentConfig(
-                system_instruction=system_prompt,
-                temperature=temperature,
-            ),
+    def send(self, message: str) -> str | None:
+        from google.genai import types
+        self._history.append(
+            types.Content(role="user", parts=[types.Part(text=message)])
         )
-        return chat
+        try:
+            response = self._client.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=self._history,
+                config=types.GenerateContentConfig(
+                    system_instruction=self._system,
+                    temperature=self._temperature,
+                    max_output_tokens=400,
+                ),
+            )
+            text = response.text or ""
+            self._history.append(
+                types.Content(role="model", parts=[types.Part(text=text)])
+            )
+            return text
+        except Exception as e:
+            self._history.pop()
+            raise e
+
+
+def init_gemini(system_prompt: str, temperature: float = 0.8):
+    """Return a GeminiSession, or None if unavailable."""
+    try:
+        session = GeminiSession(system_prompt, temperature)
+        # Smoke-test: confirm API responds before starting the loop
+        test = session.send("respond with the single word: ready")
+        if test is None:
+            return None
+        # Clear history so the real conversation starts clean
+        session._history = []
+        return session
     except Exception as e:
-        print(f"  {DIM}[Gemini init failed: {str(e)[:100]}]{RESET}")
+        print(f"  {DIM}[Gemini init failed: {str(e)[:120]}]{RESET}")
         return None
 
 
-def ask_gemini(chat, message: str) -> dict | None:
-    """Send a message to Gemini chat, parse JSON response. Returns None on failure."""
+def ask_gemini(session, message: str) -> dict | None:
+    """Send a message, parse JSON response. Returns None on failure."""
     try:
-        response = chat.send_message(message)
-        text = response.text or ""
+        text = session.send(message) or ""
         parsed = parse_json(text)
         if parsed is None:
-            print(f"  {DIM}[Gemini response not parseable as JSON: {text[:80]!r}]{RESET}")
+            print(f"  {DIM}[Gemini non-JSON response: {text[:80]!r}]{RESET}")
         return parsed
     except Exception as e:
         print(f"  {DIM}[Gemini call failed: {str(e)[:100]}]{RESET}")
         return None
+
+
+def ask_gemini_freeform(session, message: str) -> str:
+    """Send a message, return raw text (no JSON parsing)."""
+    try:
+        return session.send(message) or ""
+    except Exception:
+        return ""
 
 
 def evaluate(
@@ -418,18 +458,11 @@ def run_use(scenario: str, max_turns: int = 8) -> None:
             # Get Gemini's answer to the reflection question
             reflect_answer = "I understand the risk and have reviewed the command carefully. It is necessary for the task."
             if chat is not None:
-                ans = ask_gemini(chat, f"Answer this reflection question to proceed: {reflect_q}")
-                if ans:
-                    reflect_answer = str(ans.get("stated_plan", str(ans)))[:150]
-                else:
-                    # Try free-form text answer
-                    try:
-                        r2 = chat.send_message(
-                            f"Answer briefly (plain text, no JSON): {reflect_q}"
-                        )
-                        reflect_answer = (r2.text or reflect_answer).strip()[:150]
-                    except Exception:
-                        pass
+                raw = ask_gemini_freeform(
+                    chat, f"Answer briefly (plain text, no JSON needed): {reflect_q}"
+                )
+                if raw.strip():
+                    reflect_answer = raw.strip()[:200]
             print(f"  {ORANGE}Answer    : {reflect_answer}{RESET}")
             print(f"  {GREEN}→ Command allowed after reflection.{RESET}")
             next_msg = "Reflection answered. Command executed. Continue."
