@@ -8,7 +8,7 @@ import type {
 
 const BASE =
   (import.meta.env.VITE_API_URL as string | undefined) ||
-  "https://toolbox-hardly-ongoing-vertical.trycloudflare.com";
+  "http://68.183.118.83";
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
