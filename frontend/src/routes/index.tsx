@@ -336,7 +336,7 @@ function LandingPage() {
         <div className="mx-auto flex max-w-[1400px] items-center">
           <Link to="/" className="flex items-center gap-2.5 text-lg font-medium tracking-tight">
             <Shield className="size-5 text-accent-purple" />
-            Leash
+            Tether
           </Link>
 
           <nav className="mx-auto hidden items-center gap-10 text-sm text-muted-foreground md:flex">
@@ -368,8 +368,7 @@ function LandingPage() {
           className="anim-fade-up mt-8 max-w-xl text-base leading-relaxed text-muted-foreground md:text-lg"
           style={{ animationDelay: "100ms" }}
         >
-          A safety and comprehension firewall that catches what your AI agent
-          missed — and what you almost approved.
+          An HCI research platform for studying how humans collaborate with AI coding agents.
         </p>
 
         <Link
