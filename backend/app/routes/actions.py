@@ -17,7 +17,7 @@ async def evaluate(event: ActionEvent):
 
     policy_matches = evaluate_action(action_dict)
     drift_result = compute_drift(action_dict)
-    teacher_explanation = generate_explanation(action_dict, policy_matches, drift_result)
+    teacher_explanation = generate_explanation(action_dict, policy_matches, drift_result, sim=getattr(event, 'sim', False))
     decision = make_decision(action_dict, policy_matches, drift_result, teacher_explanation)
 
     decision_dict = decision.model_dump()

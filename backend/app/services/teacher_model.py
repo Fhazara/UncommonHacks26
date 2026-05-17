@@ -314,7 +314,10 @@ def generate_explanation(
     action: dict,
     matches: list[PolicyMatch],
     drift: CognitiveDriftResult,
+    sim: bool = False,
 ) -> TeacherExplanation:
+    if sim:
+        return _build_template(action, matches)
     if settings.wafer_enabled and settings.wafer_api_key:
         result = _call_wafer(action, matches, drift)
         if result:

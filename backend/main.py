@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import init_db
 from app.routes import actions, policies, sandbox, reports, reflection, telemetry
+from app.routes.simulation import router as simulation_router
 
 app = FastAPI(
     title="Claude Code on a Leash",
@@ -25,6 +26,7 @@ app.include_router(sandbox.router, prefix="/api/sandbox", tags=["sandbox"])
 app.include_router(reports.router, prefix="/api/report", tags=["reports"])
 app.include_router(reflection.router, prefix="/api/reflection", tags=["reflection"])
 app.include_router(telemetry.router, prefix="/api/telemetry", tags=["telemetry"])
+app.include_router(simulation_router, tags=["simulation"])
 
 
 @app.on_event("startup")

@@ -64,6 +64,7 @@ class ActionEvent(BaseModel):
     scroll_depth_percent: float = 0.0
     keystroke_count: int = 0
     fast_approvals_in_row: int = 0
+    sim: bool = False
     metadata: Dict[str, Any] = {}
 
 
